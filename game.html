@@ -479,12 +479,50 @@
     function endGame() { document.exitPointerLock(); document.getElementById('final-score').innerText = score; document.getElementById('result-screen').style.display = 'flex'; isStarted = false; }
     
     init();
-    async function sendScore(finalScore) {
-    const name = localStorage.getItem('playerName') || 'Guest'; // 名前を取得
-    await fetch(API_URL, {
-        method: "POST",
-        body: JSON.stringify({ score: finalScore, name: name }) // 名前も送る
-    });
+// GASのURLをここに貼り付け
+const RANKING_API_URL = "https://script.google.com/macros/s/AKfycbyKjNvyJRTGG4LcYh6VM4BcdCI47U41tUtGy6dvp5upieq9GsQIuFW02sMZe7tbDrto2A/exec";
+
+function endGame() { 
+        document.exitPointerLock(); 
+        document.getElementById('final-score').innerText = score; 
+        document.getElementById('result-screen').style.display = 'flex'; 
+        isStarted = false; 
+        
+        // スコア送信を実行
+        sendScore(score);
+    }
+async function sendScore(finalScore) {
+        const name = localStorage.getItem('playerName') || '名無し';
+        try {
+            await fetch(API_URL, {
+                method: "POST",
+                mode: "no-cors", 
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ score: finalScore, name: name })
+            });
+        } catch (error) {
+            console.error("送信エラー:", error);
+        }
+    }
+async function displayRanking() {
+    try {
+        const response = await fetch(RANKING_API_URL);
+        const data = await response.json();
+        let html = "<h3>TOP 10 SCORES</h3><table style='width:200px; margin:auto;'>";
+        data.forEach((row, index) => {
+            html += `<tr><td>${index + 1}.</td><td>${row[1]} pts</td></tr>`;
+        });
+        html += "</table>";
+        
+        // 結果画面のどこかにランキングを表示するためのエリアを作る
+        const rankDiv = document.getElementById('ranking-board') || document.createElement('div');
+        rankDiv.id = 'ranking-board';
+        rankDiv.style.marginTop = "20px";
+        rankDiv.innerHTML = html;
+        document.getElementById('result-screen').appendChild(rankDiv);
+    } catch (e) {
+        console.error("Ranking fetch failed", e);
+    }
 }
 </script>
 </body>
