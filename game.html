@@ -98,19 +98,20 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script>
+ <script>
     let scene, camera, renderer, score = 0;
     let timeLeft = 60, isStarted = false, isTimeUp = false;
     let weaponGroup, muzzleFlash, armMesh;
     let pitch = 0, yaw = 0, isAds = false;
     const keys = { w: false, a: false, s: false, d: false, ' ': false };
     const obstacles = [], enemies = [], hitBoxes = [];
-    const WORLD_LIMIT = 480;
+    const WORLD_LIMIT = 950;
+    const CITY_AREA_LIMIT = 300; 
 
     let cheatMaster = false, espActive = false, aimActive = false;
     const cheatCommand = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowRight', 'ArrowRight', 'ArrowLeft', 'ArrowLeft'];
     let cheatInput = [];
-    const SOFT_AIM_FOV = 0.15; // FOV範囲（正規化デバイス座標）
+    const SOFT_AIM_FOV = 0.15;
 
     const weapons = {
         1: { name: "PISTOL", ammo: 12, maxAmmo: 12, fireRate: 250, auto: false, spread: 0.01, count: 1, damage: 100, zoom: 50 },
@@ -133,11 +134,11 @@
     function init() {
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
-        scene.fog = new THREE.Fog(0x87CEEB, 100, 1500);
+        scene.fog = new THREE.Fog(0x87CEEB, 100, 1800);
         
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 3000);
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 3500);
         camera.rotation.order = 'YXZ';
-        camera.position.set(0, 1.6, 0);
+        camera.position.set(0, 1.6, 100); 
         scene.add(camera);
 
         renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -149,14 +150,15 @@
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.7));
         const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-        sun.position.set(200, 400, 100);
+        sun.position.set(200, 500, 100);
         scene.add(sun);
 
         createWorld();
         createDecorations();
         createWeapon();
         switchWeaponModel(1);
-        for(let i=0; i<15; i++) spawnTarget();
+        
+        for(let i=0; i<70; i++) spawnTarget();
 
         document.getElementById('start-btn').addEventListener('click', () => {
             renderer.domElement.requestPointerLock();
@@ -200,41 +202,127 @@
         animate();
     }
 
+    function getTerrainHeight(x, z) {
+        if (Math.abs(x) < CITY_AREA_LIMIT && Math.abs(z) < CITY_AREA_LIMIT) return 0;
+        
+        let h = 0;
+        if (x < 0 && z < 0) { // 林（緑の丘）
+            h = Math.sin(x*0.03)*Math.cos(z*0.03)*12 + Math.sin(x*0.01)*5;
+        } else if (x > 0 && z < 0) { // 砂漠（砂の丘）
+            h = Math.sin(x*0.015)*Math.cos(z*0.015)*25 + Math.cos(x*0.005)*10;
+        } else if (x < 0 && z > 0) { // 平原（比較的平坦）
+            h = Math.sin(x*0.05)*Math.cos(z*0.05)*2;
+        } else { // 荒地
+            h = Math.sin(x*0.02)*10;
+        }
+        return h;
+    }
+
     function createWorld() {
-        const baseGeo = new THREE.PlaneGeometry(3000, 3000);
-        const baseMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
-        const floor = new THREE.Mesh(baseGeo, baseMat);
-        floor.rotation.x = -Math.PI/2; floor.position.y = -0.1; scene.add(floor);
+        const terrainGeo = new THREE.PlaneGeometry(3000, 3000, 120, 120);
+        const positions = terrainGeo.attributes.position.array;
+        for(let i = 0; i < positions.length; i += 3) {
+            const x = positions[i];
+            const z = positions[i+1];
+            positions[i+2] = getTerrainHeight(x, -z);
+        }
+        terrainGeo.computeVertexNormals();
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const floor = new THREE.Mesh(terrainGeo, baseMat);
+        floor.rotation.x = -Math.PI/2; floor.position.y = -0.2; scene.add(floor);
+        
         const areas = [
-            { s: [200, 200], c: 0x888888, p: [0, 0, 0] },
-            { s: [800, 800], c: 0x1a431a, p: [-500, 0, -500] },
-            { s: [800, 800], c: 0xc2a47c, p: [500, 0, -500] },
-            { s: [800, 800], c: 0x2d632d, p: [-500, 0, 500] },
-            { s: [800, 800], c: 0x778833, p: [500, 0, 500] }
+            { s: [600, 600], c: 0x444444, p: [0, 0, 0] },       // 市街
+            { s: [1000, 1000], c: 0x1a441a, p: [-800, 0, -800] }, // 林
+            { s: [1000, 1000], c: 0xd2b48c, p: [800, 0, -800] },  // 砂漠
+            { s: [1000, 1000], c: 0x3d663d, p: [-800, 0, 800] },  // 平原
+            { s: [1000, 1000], c: 0x776644, p: [800, 0, 800] }    // 荒野
         ];
         areas.forEach(a => {
             const g = new THREE.Mesh(new THREE.PlaneGeometry(a.s[0], a.s[1]), new THREE.MeshStandardMaterial({ color: a.c }));
-            g.rotation.x = -Math.PI/2; g.position.set(a.p[0], 0, a.p[1]); scene.add(g);
+            g.rotation.x = -Math.PI/2; g.position.set(a.p[0], -0.15, a.p[1]); 
+            if(a.c === 0x444444) scene.add(g); 
         });
+
+        // 道路
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1 });
+        const lineMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 1 });
+        const roadV = new THREE.Mesh(new THREE.PlaneGeometry(60, 600), roadMat);
+        roadV.rotation.x = -Math.PI/2; roadV.position.set(0, -0.05, 0); scene.add(roadV);
+        const roadH = new THREE.Mesh(new THREE.PlaneGeometry(600, 60), roadMat);
+        roadH.rotation.x = -Math.PI/2; roadH.position.set(0, -0.05, 0); scene.add(roadH);
+
+        for(let i = -290; i <= 290; i += 25) {
+            if(Math.abs(i) < 40) continue;
+            const lineV = new THREE.Mesh(new THREE.PlaneGeometry(2, 12), lineMat);
+            lineV.rotation.x = -Math.PI/2; lineV.position.set(0, 0.01, i); scene.add(lineV);
+            const lineH = new THREE.Mesh(new THREE.PlaneGeometry(12, 2), lineMat);
+            lineH.rotation.x = -Math.PI/2; lineH.position.set(i, 0.01, 0); scene.add(lineH);
+        }
     }
 
     function createDecorations() {
-        const bMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.7 });
-        for (let i = 0; i < 50; i++) {
-            const h = 20 + Math.random() * 60;
-            const b = new THREE.Mesh(new THREE.BoxGeometry(15, h, 15), bMat);
-            b.position.set((Math.random()-0.5)*190, h/2, (Math.random()-0.5)*190);
-            if(b.position.length() > 30) { scene.add(b); obstacles.push(b); }
+        const buildingMat = new THREE.ShaderMaterial({
+            uniforms: { color: { value: new THREE.Color(0x555555) }, windowColor: { value: new THREE.Color(0x050505) }, repeat: { value: new THREE.Vector2(3, 10) } },
+            vertexShader: `varying vec2 vUv; varying vec3 vNormal; void main() { vUv = uv; vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+            fragmentShader: `uniform vec3 color; uniform vec3 windowColor; uniform vec2 repeat; varying vec2 vUv; varying vec3 vNormal; void main() { vec2 count = repeat; if(abs(vNormal.x) > 0.5) count.x = repeat.y * 0.2; if(abs(vNormal.y) > 0.5) { gl_FragColor = vec4(color * 0.8, 1.0); return; } vec2 wPos = fract(vUv * count); float w = step(0.15, wPos.x) * step(0.15, wPos.y); vec3 finalColor = mix(windowColor, color, w); gl_FragColor = vec4(finalColor, 1.0); }`
+        });
+
+        for (let i = 0; i < 180; i++) {
+            const h = 50 + Math.random() * 150;
+            const b = new THREE.Mesh(new THREE.BoxGeometry(25, h, 25), buildingMat);
+            let rx = (Math.random()-0.5)*550;
+            let rz = (Math.random()-0.5)*550;
+            if(Math.abs(rx) < 60 && Math.abs(rz) < 60) continue; 
+            b.position.set(rx, h/2, rz);
+            scene.add(b); obstacles.push(b);
         }
-        for (let i = 0; i < 150; i++) {
-            const x = (Math.random()-0.5)*1500, z = (Math.random()-0.5)*1500;
-            if(Math.abs(x) > 120 || Math.abs(z) > 120) {
-                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.2, 15), new THREE.MeshStandardMaterial({color: 0x3d2b1f}));
-                trunk.position.set(x, 7.5, z); scene.add(trunk); obstacles.push(trunk);
-                const leaf = new THREE.Mesh(new THREE.ConeGeometry(6, 12, 8), new THREE.MeshStandardMaterial({color: 0x115511, roughness: 1}));
-                leaf.position.set(x, 18, z); scene.add(leaf);
+
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f });
+        const leafMat = new THREE.MeshStandardMaterial({ color: 0x0a330a });
+        const grassMat = new THREE.MeshStandardMaterial({ color: 0x225522, side: THREE.DoubleSide });
+
+        for(let i = 0; i < 3500; i++) {
+            const x = (Math.random()-0.5)*3000;
+            const z = (Math.random()-0.5)*3000;
+            if (Math.abs(x) < 300 && Math.abs(z) < 300) continue; 
+            const h = getTerrainHeight(x, z);
+            const r = Math.random();
+
+            if (x < 0 && z < 0) { // 林: 緑の丘
+                if (r < 0.6) spawnTree(x, h, z, 15+Math.random()*10, 6, trunkMat, leafMat);
+                else if (r < 0.9) spawnGrass(x, h, z, 0x228b22);
+            } else if (x > 0 && z < 0) { // 砂漠: 砂の丘と岩
+                if (r < 0.2) spawnRock(x, h, z, 4+Math.random()*12, 0x8b7355);
+                else if (r < 0.4) spawnRock(x, h, z, 1+Math.random()*3, 0x665544);
+            } else if (x < 0 && z > 0) { // 平原: 平坦で草が多い
+                if (r < 0.02) spawnTree(x, h, z, 10, 4, trunkMat, leafMat);
+                else if (r < 0.95) spawnGrass(x, h, z, 0x557722, 2.5);
+            } else { // 荒野
+                if (r < 0.1) spawnRock(x, h, z, 2+Math.random()*5, 0x444444);
+                if (r < 0.3) spawnGrass(x, h, z, 0x665533, 1.2);
             }
         }
+    }
+
+    function spawnTree(x, y, z, h, w, tMat, lMat) {
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(h*0.06, h*0.08, h), tMat);
+        trunk.position.set(x, y + h/2, z); scene.add(trunk); obstacles.push(trunk);
+        const leaves = new THREE.Mesh(new THREE.ConeGeometry(w, h*0.9, 7), lMat);
+        leaves.position.set(x, y + h, z); scene.add(leaves);
+    }
+
+    function spawnRock(x, y, z, s, color) {
+        const g = new THREE.DodecahedronGeometry(s);
+        const m = new THREE.MeshStandardMaterial({ color: color, roughness: 0.9 });
+        const rock = new THREE.Mesh(g, m);
+        rock.position.set(x, y + s*0.5, z); rock.rotation.set(Math.random(), Math.random(), Math.random());
+        scene.add(rock); obstacles.push(rock);
+    }
+
+    function spawnGrass(x, y, z, color, scale=1.5) {
+        const g = new THREE.Mesh(new THREE.PlaneGeometry(0.5*scale, 1.2*scale), new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide, alphaTest: 0.5 }));
+        g.position.set(x, y + 0.5*scale, z); g.rotation.y = Math.random()*Math.PI; scene.add(g);
     }
 
     function createWeapon() { weaponGroup = new THREE.Group(); camera.add(weaponGroup); }
@@ -245,7 +333,6 @@
         armMesh.position.set(0.35, -0.3, -0.2); armMesh.renderOrder = 10000; weaponGroup.add(armMesh);
         let body, parts = [];
         if(id === 1) {
-            // ピストルのグリップと本体を小さく修正
             body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.45), wepMats.polymer);
             const slide = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.46), wepMats.metalSteel);
             slide.position.y = 0.08; parts.push(slide);
@@ -281,65 +368,45 @@
         if (document.pointerLockElement && !isTimeUp) {
             isAds = keys[' '];
             const targetFov = isAds ? weapons[currentWepId].zoom : 75;
-            camera.fov += (targetFov - camera.fov) * 0.15;
-            camera.updateProjectionMatrix();
-
+            camera.fov += (targetFov - camera.fov) * 0.15; camera.updateProjectionMatrix();
             const targetY = isAds ? (currentWepId === 4 ? -0.2 : -0.15) : -0.2;
             const targetZ = isAds ? -0.4 : -0.6;
-            if(isAds) {
-                weaponGroup.position.x += ((-0.35) - weaponGroup.position.x) * 0.2;
-                weaponGroup.position.y += ((targetY + 0.2) - weaponGroup.position.y) * 0.2;
-                weaponGroup.position.z += ((-targetZ + 0.6) - weaponGroup.position.z) * 0.2;
-            } else {
-                weaponGroup.position.x += (0 - weaponGroup.position.x) * 0.2;
-                weaponGroup.position.y += (0 - weaponGroup.position.y) * 0.2;
-                weaponGroup.position.z += (0 - weaponGroup.position.z) * 0.2;
-            }
-            
+            weaponGroup.position.x += ( (isAds ? -0.35 : 0) - weaponGroup.position.x) * 0.2;
+            weaponGroup.position.y += ( (isAds ? targetY + 0.2 : 0) - weaponGroup.position.y) * 0.2;
+            weaponGroup.position.z += ( (isAds ? -targetZ + 0.6 : 0) - weaponGroup.position.z) * 0.2;
             const isSniperAds = isAds && currentWepId === 4;
             document.getElementById('crosshair-wrapper').style.display = isSniperAds ? 'none' : 'block';
             document.getElementById('sniper-overlay').style.display = isSniperAds ? 'block' : 'none';
-
-            const speed = isAds ? 0.12 : 0.35;
-            const move = new THREE.Vector3(
-                Number(keys.d) - Number(keys.a), 
-                0, 
-                Number(keys.s) - Number(keys.w)
-            ).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiplyScalar(speed);
             
+            const speed = isAds ? 0.15 : 0.45;
+            const move = new THREE.Vector3(Number(keys.d) - Number(keys.a), 0, Number(keys.s) - Number(keys.w)).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiplyScalar(speed);
             const nextPos = camera.position.clone().add(move);
-            if (!checkCollision(nextPos)) {
-                camera.position.copy(nextPos);
-            }
+            nextPos.y = getTerrainHeight(nextPos.x, nextPos.z) + 1.6;
+            if (!checkCollision(nextPos)) camera.position.copy(nextPos);
             
             if(isMouseDown && weapons[currentWepId].auto) onShoot();
-
+            
             enemies.forEach(e => {
-                const nextEnemyPos = e.group.position.clone().add(e.vel);
-                const enemyBB = new THREE.Box3().setFromObject(e.group).translate(e.vel);
-                let hitObstacle = false;
-
-                for (let obs of obstacles) {
-                    const obsBB = new THREE.Box3().setFromObject(obs);
-                    if (enemyBB.intersectsBox(obsBB)) {
-                        hitObstacle = true;
-                        break;
+                let nextEnemyPos = e.group.position.clone().add(e.vel);
+                
+                // ビルや障害物との衝突判定
+                let collided = false;
+                const enemyBB = new THREE.Box3().setFromCenterAndSize(nextEnemyPos, new THREE.Vector3(1, 2, 1));
+                for(let obs of obstacles) {
+                    if (enemyBB.intersectsBox(new THREE.Box3().setFromObject(obs))) {
+                        collided = true; break;
                     }
                 }
 
-                if (hitObstacle || Math.abs(nextEnemyPos.x) > WORLD_LIMIT || Math.abs(nextEnemyPos.z) > WORLD_LIMIT) {
+                if (collided || Math.abs(nextEnemyPos.x) > WORLD_LIMIT || Math.abs(nextEnemyPos.z) > WORLD_LIMIT) {
                     e.vel.multiplyScalar(-1);
+                    e.vel.applyAxisAngle(new THREE.Vector3(0,1,0), (Math.random()-0.5));
                 } else {
+                    if (Math.random() < 0.01) e.vel.applyAxisAngle(new THREE.Vector3(0,1,0), (Math.random()-0.5)*0.5);
+                    nextEnemyPos.y = getTerrainHeight(nextEnemyPos.x, nextEnemyPos.z);
                     e.group.position.copy(nextEnemyPos);
                 }
-
-                if (espActive) {
-                    e.box.update();
-                    const headPos = e.group.position.clone().add(new THREE.Vector3(0, 1.6, 0));
-                    const camDir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-                    const start = camera.position.clone().add(camDir.multiplyScalar(0.5));
-                    e.line.geometry.setFromPoints([start, headPos]);
-                }
+                if (espActive) { e.box.update(); const headPos = e.group.position.clone().add(new THREE.Vector3(0, 1.6, 0)); const camDir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion); const start = camera.position.clone().add(camDir.multiplyScalar(0.5)); e.line.geometry.setFromPoints([start, headPos]); }
             });
         }
         renderer.render(scene, camera);
@@ -351,7 +418,6 @@
         wep.ammo--; updateAmmoUI(); lastFireTime = Date.now();
         muzzleFlash.visible = true; weaponGroup.children[1].position.z += 0.1;
         setTimeout(() => { muzzleFlash.visible = false; weaponGroup.children[1].position.z -= 0.1; }, 50);
-
         let aimTarget = null;
         if (aimActive) {
             let minPlayerDist = Infinity;
@@ -359,27 +425,16 @@
                 const headPos = e.group.position.clone().add(new THREE.Vector3(0, 1.6, 0));
                 const screenPos = headPos.clone().project(camera);
                 const distFromCenter = Math.sqrt(screenPos.x**2 + screenPos.y**2);
-
                 if (distFromCenter < SOFT_AIM_FOV) {
                     const distToPlayer = camera.position.distanceTo(headPos);
-                    if (distToPlayer < minPlayerDist) {
-                        minPlayerDist = distToPlayer;
-                        aimTarget = headPos;
-                    }
+                    if (distToPlayer < minPlayerDist) { minPlayerDist = distToPlayer; aimTarget = headPos; }
                 }
             });
         }
-
         const raycaster = new THREE.Raycaster();
         for(let i=0; i < wep.count; i++) {
-            if (aimTarget) {
-                const direction = aimTarget.clone().sub(camera.position).normalize();
-                raycaster.set(camera.position, direction);
-            } else {
-                const spread = isAds ? wep.spread * 0.1 : wep.spread;
-                raycaster.setFromCamera({x: (Math.random()-0.5)*spread, y: (Math.random()-0.5)*spread}, camera);
-            }
-
+            if (aimTarget) { const direction = aimTarget.clone().sub(camera.position).normalize(); raycaster.set(camera.position, direction); }
+            else { const spread = isAds ? wep.spread * 0.1 : wep.spread; raycaster.setFromCamera({x: (Math.random()-0.5)*spread, y: (Math.random()-0.5)*spread}, camera); }
             const hits = raycaster.intersectObjects([...hitBoxes, ...obstacles]);
             if(hits.length > 0) {
                 createHitEffect(hits[0].point, hits[0].face.normal);
@@ -409,24 +464,18 @@
         group.add(createPart(0.6, 0.8, 0.3, 0, 1.0, 0, 0xdd2222, 'body'));
         group.add(createPart(0.2, 0.6, 0.2, -0.15, 0.3, 0, 0x333333, 'leg'));
         group.add(createPart(0.2, 0.6, 0.2, 0.15, 0.3, 0, 0x333333, 'leg'));
-        group.position.set((Math.random()-0.5)*1100, 0, (Math.random()-0.5)*1100);
+        let rx, rz;
+        do {
+            rx = (Math.random()-0.5)*1800;
+            rz = (Math.random()-0.5)*1800;
+        } while(checkCollision(new THREE.Vector3(rx, 1, rz)));
+
+        const ry = getTerrainHeight(rx, rz);
+        group.position.set(rx, ry, rz);
         scene.add(group);
-        
-        const box = new THREE.BoxHelper(group, 0xff0000);
-        box.material = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2, depthTest: false });
-        box.scale.multiplyScalar(1.2);
-        box.visible = espActive;
-        box.renderOrder = 999;
-        scene.add(box);
-
-        const lineMat = new THREE.LineBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5, depthTest: false });
-        const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-        const line = new THREE.Line(lineGeo, lineMat);
-        line.visible = espActive;
-        line.renderOrder = 998;
-        scene.add(line);
-
-        enemies.push({ group, box, line, vel: new THREE.Vector3(Math.random()-0.5, 0, Math.random()-0.5).normalize().multiplyScalar(0.18) });
+        const box = new THREE.BoxHelper(group, 0xff0000); box.material = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2, depthTest: false }); box.scale.multiplyScalar(1.2); box.visible = espActive; box.renderOrder = 999; scene.add(box);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5, depthTest: false }); const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]); const line = new THREE.Line(lineGeo, lineMat); line.visible = espActive; line.renderOrder = 998; scene.add(line);
+        enemies.push({ group, box, line, vel: new THREE.Vector3(Math.random()-0.5, 0, Math.random()-0.5).normalize().multiplyScalar(0.28) });
         group.children.forEach(c => hitBoxes.push(c));
     }
 
@@ -437,44 +486,24 @@
 
     function checkCollision(pos) {
         if (Math.abs(pos.x) > WORLD_LIMIT || Math.abs(pos.z) > WORLD_LIMIT) return true;
-        const playerBB = new THREE.Box3().setFromCenterAndSize(
-            pos, 
-            new THREE.Vector3(1.0, 2.0, 1.0)
-        );
-        for (let obs of obstacles) {
-            const obsBB = new THREE.Box3().setFromObject(obs);
-            if (playerBB.intersectsBox(obsBB)) return true;
-        }
+        const playerBB = new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(1.5, 2.0, 1.5));
+        for (let obs of obstacles) { if (playerBB.intersectsBox(new THREE.Box3().setFromObject(obs))) return true; }
         return false;
     }
 
     function killEnemy(e, h, d) { 
         score += Math.floor(h ? d*2.5 : d); document.getElementById('score').innerText = score;
-        const dv = document.createElement('div'); dv.className = 'dmg-text'; dv.textContent = h ? "CRITICAL!" : d;
-        dv.style.color = h ? '#ff0000' : '#00ffff'; dv.style.left = "50%"; dv.style.top = "45%";
-        document.getElementById('damage-container').appendChild(dv); setTimeout(() => dv.remove(), 600);
-        scene.remove(e.group); scene.remove(e.box); scene.remove(e.line);
-        enemies.splice(enemies.indexOf(e), 1); spawnTarget();
+        const dv = document.createElement('div'); dv.className = 'dmg-text'; dv.textContent = h ? "CRITICAL!" : d; dv.style.color = h ? '#ff0000' : '#00ffff'; dv.style.left = "50%"; dv.style.top = "45%"; document.getElementById('damage-container').appendChild(dv); setTimeout(() => dv.remove(), 600);
+        scene.remove(e.group); scene.remove(e.box); scene.remove(e.line); enemies.splice(enemies.indexOf(e), 1); spawnTarget();
     }
 
     function reload() { if(isReloading) return; isReloading = true; document.getElementById('reload-msg').style.display='block'; weaponGroup.children[1].rotation.x = 0.6; setTimeout(()=>{ weapons[currentWepId].ammo = weapons[currentWepId].maxAmmo; isReloading=false; document.getElementById('reload-msg').style.display='none'; weaponGroup.children[1].rotation.x=0; updateAmmoUI(); }, 1200); }
     function updateAmmoUI() { document.getElementById('ammo-current').textContent = weapons[currentWepId].ammo; document.getElementById('ammo-max').textContent = weapons[currentWepId].maxAmmo; document.getElementById('weapon-name').textContent = weapons[currentWepId].name; }
     function switchWeapon(id) { if(isReloading) return; currentWepId = id; document.querySelectorAll('.slot').forEach((s,i)=>s.classList.toggle('active', i+1===id)); switchWeaponModel(id); updateAmmoUI(); }
-    
     function unlockCheat() { cheatMaster = true; document.getElementById('cheat-panel').style.display = 'block'; }
     function toggleESP() { espActive = !espActive; document.getElementById('cheat-esp-status').textContent = `ESP: ${espActive ? 'ON' : 'OFF'} (I)`; enemies.forEach(e => { e.box.visible = espActive; e.line.visible = espActive; }); }
     function toggleAIM() { aimActive = !aimActive; document.getElementById('cheat-aim-status').textContent = `SILENT-AIM: ${aimActive ? 'ON' : 'OFF'} (O)`; document.getElementById('aim-fov-circle').style.display = aimActive ? 'block' : 'none'; }
-    
-    function startTimer() { 
-        const timerInterval = setInterval(() => { 
-            if(!isTimeUp && timeLeft > 0) { 
-                timeLeft--; 
-                document.getElementById('timer-value').textContent = `00:${timeLeft.toString().padStart(2, '0')}`; 
-                if(timeLeft <= 0) { isTimeUp = true; clearInterval(timerInterval); endGame(); } 
-            } 
-        }, 1000); 
-    }
-
+    function startTimer() { const timerInterval = setInterval(() => { if(!isTimeUp && timeLeft > 0) { timeLeft--; document.getElementById('timer-value').textContent = `00:${timeLeft.toString().padStart(2, '0')}`; if(timeLeft <= 0) { isTimeUp = true; clearInterval(timerInterval); endGame(); } } }, 1000); }
     function endGame() { document.exitPointerLock(); document.getElementById('final-score').innerText = score; document.getElementById('result-screen').style.display = 'flex'; isStarted = false; }
     
     init();
