@@ -479,6 +479,13 @@
     function endGame() { document.exitPointerLock(); document.getElementById('final-score').innerText = score; document.getElementById('result-screen').style.display = 'flex'; isStarted = false; }
     
     init();
+    async function sendScore(finalScore) {
+    const name = localStorage.getItem('playerName') || 'Guest'; // 名前を取得
+    await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ score: finalScore, name: name }) // 名前も送る
+    });
+}
 </script>
 </body>
 </html>
