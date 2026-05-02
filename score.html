@@ -2,76 +2,61 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>FPS Global Leaderboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@700&family=Oswald&display=swap" rel="stylesheet">
+    <title>Kaminofps - Hall of Fame</title>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Syncopate:wght@700&display=swap" rel="stylesheet">
     <style>
-        body { background-color: #0d0d0d; color: #fff; font-family: 'Oswald', sans-serif; display: flex; flex-direction: column; align-items: center; }
-        h1 { font-family: 'Syncopate'; color: #00ffff; text-shadow: 0 0 10px #00ffff; margin-top: 50px; }
-        table { border-collapse: collapse; width: 80%; max-width: 600px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; overflow: hidden; }
-        th { background-color: #ff1493; color: white; padding: 15px; text-transform: uppercase; }
-        td { padding: 12px; text-align: center; border-bottom: 1px solid #333; }
-        tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.02); }
-        tr:hover { background-color: rgba(0, 255, 255, 0.1); }
-        .rank-1 { color: #ffd700; font-weight: bold; font-size: 1.2em; } /* 金メダル色 */
-        .loading { color: #888; margin-top: 20px; }
+        body { background-color: #0d0d0d; color: #fff; font-family: 'Oswald', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 50px; }
+        h1 { font-family: 'Syncopate'; color: #ff1493; text-shadow: 0 0 15px #ff1493; }
+        table { width: 100%; max-width: 700px; border-collapse: collapse; margin-top: 30px; background: rgba(255,255,255,0.03); }
+        th { border-bottom: 2px solid #00ffff; color: #00ffff; padding: 15px; text-align: left; }
+        td { padding: 12px; border-bottom: 1px solid #333; }
+        .back-btn { margin-top: 40px; color: #fff; text-decoration: none; border: 1px solid #fff; padding: 10px 20px; border-radius: 5px; }
+        .back-btn:hover { background: #fff; color: #000; }
     </style>
 </head>
 <body>
-
     <h1>スコアボード</h1>
-    
-    <div id="loading" class="loading">LOADING SCORES...</div>
-    <table id="leaderboard" style="display:none;">
-        <thead>
-            <tr>
-                <th>Rank</th>
-                <th>Score</th>
-                <th>Date</th>
-            </tr>
-        </thead>
-        <tbody id="ranking-data">
-            <!-- ここにデータが入ります -->
-        </tbody>
+    <table id="leaderboard">
+        <thead><tr><th>Rank</th><th>Operator</th><th>Score</th><th>Date</th></tr></thead>
+        <tbody id="ranking-data"></tbody>
     </table>
-
-    <script>
-        // 前の手順で作成したGASのWebアプリURLをここに貼る
+    <a href="index.html" class="back-btn">RETURN TO LOBBY</a>
+  <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyKjNvyJRTGG4LcYh6VM4BcdCI47U41tUtGy6dvp5upieq9GsQIuFW02sMZe7tbDrto2A/exec";
-
-        async function loadRanking() {
+        
+        async function load() {
             try {
-                const response = await fetch(API_URL);
-                const data = await response.json();
-                const tbody = document.getElementById('ranking-data');
+                const res = await fetch(API_URL);
+                const data = await res.json();
                 
-                // スコアの高い順にソート (スプレッドシートの2列目)
-                data.sort((a, b) => b[1] - a[1]);
+                // スコア（row[1]）が高い順にソート
+                data.sort((a, b) => b[1] - a[1]); 
 
-                tbody.innerHTML = "";
-                data.slice(0, 20).forEach((row, index) => {
-                    const tr = document.createElement('tr');
-                    if(index === 0) tr.className = "rank-1";
-                    
-                    // 日時を見やすく整形 (例: 2026/05/02)
-                    const date = new Date(row[0]).toLocaleDateString();
-                    
-                    tr.innerHTML = `
-                        <td>${index + 1}</td>
-                        <td>${row[1].toLocaleString()}</td>
-                        <td>${date}</td>
-                    `;
-                    tbody.appendChild(tr);
+                const tbody = document.getElementById('ranking-data');
+                tbody.innerHTML = ""; // 重複表示防止のために一旦クリア
+
+                data.slice(0, 20).forEach((row, i) => {
+                    // --- ここで名前をチェック ---
+                    // row[2] が空、null、または文字列の "undefined" の場合に "名無し" を入れる
+                    let playerName = row[2];
+                    if (!playerName || playerName === "undefined" || playerName.trim() === "") {
+                        playerName = "名無し";
+                    }
+
+                    // テーブルに行を追加
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>#${i+1}</td>
+                            <td>${playerName}</td>
+                            <td>${Number(row[1]).toLocaleString()}</td>
+                            <td>${new Date(row[0]).toLocaleDateString()}</td>
+                        </tr>`;
                 });
-
-                document.getElementById('loading').style.display = "none";
-                document.getElementById('leaderboard').style.display = "table";
-            } catch (e) {
-                console.error("Failed to load ranking:", e);
-                document.getElementById('loading').innerText = "ERROR LOADING DATA";
+            } catch (error) {
+                console.error("データの読み込みに失敗しました:", error);
             }
         }
-
-        loadRanking();
+        load();
     </script>
 </body>
 </html>
